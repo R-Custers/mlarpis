@@ -1,5 +1,11 @@
-# Markup languages and reproducible programming in statistics
+# my-reproducible manuscript
 
-Deliverable 1: Reproducible research compendium.
+<!-- badges: start -->
+<!-- badges: end -->
 
-Place the full contents of your research compendium in this directory. See course manual for requirements.
+The goal of my-reproducible-manuscript is to be a reproducible manuscript
+
+Author : Ruben Custers
+Date created: 16/11/2026
+
+
