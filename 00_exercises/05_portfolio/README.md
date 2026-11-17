@@ -6,3 +6,5 @@ The link to my personal website:
 
 https://r-custers.github.io/
 
+and the repo: 
+https://github.com/R-Custers/R-Custers.github.io
