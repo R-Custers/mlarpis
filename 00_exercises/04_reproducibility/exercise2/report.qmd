@@ -1,0 +1,169 @@
+---
+title: "report"
+author: "Ruben"
+format: html
+---
+
+```{r}
+#| label: load-packages
+#| echo: true
+#| output: false
+
+library(Hmisc)
+library(tidyverse)
+```
+
+
+
+```{r}
+#| label: load-data
+#| echo: true
+#| output: false
+
+# Relative path to folder where the data is
+path <- "data/"
+
+# load and subselect the data
+d <- subset(
+  sasxport.get(paste0(path, "DEMO_I.xpt")),
+  select=c("seqn","riagendr","ridageyr"))
+
+# Same as above but also merge at the same time
+d <- merge(d,
+           subset(sasxport.get(paste0(path, "BPX_I.xpt"))
+             ,select=c("seqn","bpxsy1")))
+d <- merge(d,
+           subset(sasxport.get(paste0(path, "BMX_I.xpt"))
+             ,select=c("seqn","bmxbmi")))
+d <- merge(d,
+           subset(sasxport.get(paste0(path, "GHB_I.xpt"))
+             ,select=c("seqn","lbxgh")))
+d <- merge(d,
+           subset(sasxport.get(paste0(path, "TCHOL_I.xpt"))
+             ,select=c("seqn","lbdtcsi")))
+
+```
+
+
+```{r}
+#| label: prep-data
+#| echo: true
+#| output: false
+
+# Drop first and last column as they are not used in the analysis
+# Also drop NA cases at the same time
+d <- cc(d[,2:6])
+
+colnames(d) <- c("sex","age", "bp", "bmi", "HbA1C")
+
+d$age[d$age<18] <- NA
+
+d$sex <- as.factor(d$sex)
+```
+
+# Analysis
+
+## Analysis without bmi included
+
+```{r}
+#| label: analysis-1
+#| echo: true
+
+fit1 <- lm(bp ~ HbA1C + age + sex, data=d)
+summary(fit1)
+confint(fit1, level = 0.95)
+```
+
+
+## Analysis with bmi included
+
+```{r}
+#| label: analysis-2
+
+
+fit2 <- lm(bp ~ HbA1C + bmi + age + sex, data=d)
+summary(fit2)
+confint(fit2, level = 0.95)
+```
+
+# Simulation part
+
+```{r}
+#| label: prep-sim
+#| echo: true
+#| output: false
+
+
+ref <- lm(bp ~ HbA1C + bmi + age + sex, data=d)$coef[2]
+
+
+grid <- tibble(expand.grid(
+  perc.me.exp = seq(0,.5,.1),
+  perc.me.conf = seq(0,.5,.1),
+  iter = seq(1, 1000, 1)
+  )) |> 
+  mutate(
+    seed = as.integer(sample(2^32/2, n()))
+  )
+
+grid$beta.hat <- rep(0, nrow(grid))
+
+var.exp <- var(d$HbA1C)
+var.conf <- var(d$bmi)
+```
+
+
+```{r}
+#| label: run-sim
+#| echo: true
+#| output: false
+
+for (i in 1:nrow(grid)) {
+  var.me.exp <- var.exp*grid$perc.me.exp[i]/(1-grid$perc.me.exp[i])
+  var.me.conf <- var.conf*grid$perc.me.conf[i]/(1-grid$perc.me.conf[i])
+  d$HbA1C.me <- d$HbA1C + rnorm(nrow(d), 0, sqrt(var.me.exp))
+  d$bmi.me <- d$bmi + rnorm(nrow(d), 0, sqrt(var.me.conf))
+  grid$beta.hat[i] <- lm(bp ~ HbA1C.me + age + bmi.me + sex, data=d)$coef[2]
+}
+```
+
+
+```{r}
+#| label: sim-data-prep
+#| echo: true
+#| output: false
+
+
+agg_df <- grid |> 
+  group_by(perc.me.exp, perc.me.conf) |> 
+  summarise(
+    estimate = mean(beta.hat),
+    .groups = "drop"
+  )
+```
+
+## Simulation results
+
+```{r}
+#| label: fig-one
+#| fig-label: "Level of variance due to measurement error and estimate"
+
+plt1 <- ggplot(agg_df, aes(perc.me.exp, perc.me.conf)) +
+  geom_tile(color="white",aes(fill = estimate)) +
+  geom_text(aes(label = round(estimate, 2))) +
+  scale_fill_gradient2(low="#D55E00",mid="white",high = "#56B4E9", midpoint=ref) +
+  labs(x=paste("% of total variance of HbA1c due to measurement error"),
+       y=paste("% of total variance of BMI due to measurement error")) +
+  coord_equal()+
+  scale_y_continuous(breaks=unique(agg_df$perc.me.exp)*100)+
+  scale_x_continuous(breaks=unique(agg_df$perc.me.exp)*100)+
+  theme(panel.background = element_rect(fill='white', colour='grey'),
+        plot.title=element_text(hjust=0),
+        axis.ticks=element_blank(),
+        axis.title=element_text(size=12),
+        axis.text=element_text(size=10),
+        legend.title=element_text(size=12),
+        legend.text=element_text(size=10))
+plt1
+```
+As can be seen in @fig-one, when the *BMI* variance gets larger the regression coefficient gets larger while when the variance of HbA1c gets larger the variance coefficient gets lower. If they both increase it stays roughly the same. The white squares signal the same estimate as the original non-simulated one.
